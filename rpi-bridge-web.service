@@ -1,0 +1,29 @@
+[Unit]
+Description=Control Hub browser management UI
+Wants=NetworkManager.service network-online.target
+After=NetworkManager.service network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/rpi-bridge/rpi_bridge_web.py
+Restart=on-failure
+RestartSec=5
+User=root
+RuntimeDirectory=rpi-bridge
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_UNIX AF_NETLINK
+RestrictSUIDSGID=yes
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
