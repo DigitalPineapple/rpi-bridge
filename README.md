@@ -18,6 +18,12 @@ Use a browser to choose a hub, open FTC Dashboard or Pedro Pathing AutoTune,
 and connect Android Studio. You can save several hubs, but the Pi connects to
 **one hub at a time**.
 
+![Laptop view of the rpi-bridge portal, showing robot-tool links, saved hubs with Connect and Remove buttons, Wi-Fi scanning, and the Add a hub form.](docs/images/web-portal.png)
+
+*The portal on a laptop-sized screen. This local preview shows two saved hubs
+with neither connected. On your team's setup, use your Pi's network address,
+not the preview's `127.0.0.1` address.*
+
 ## Before you start
 
 You will need:
