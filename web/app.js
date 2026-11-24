@@ -45,7 +45,7 @@ async function action(work, pending) {
   }
 }
 
-function row(title, description, buttonLabel, onClick, active = false) {
+function row(title, description, buttonLabel, onClick, active = false, onRemove = null) {
   const item = document.createElement("div");
   item.className = "item";
   const text = document.createElement("div");
@@ -59,7 +59,17 @@ function row(title, description, buttonLabel, onClick, active = false) {
   button.textContent = buttonLabel;
   button.className = "secondary";
   button.addEventListener("click", onClick);
-  item.append(text, button);
+  const controls = document.createElement("div");
+  controls.className = "actions";
+  controls.append(button);
+  if (onRemove) {
+    const remove = document.createElement("button");
+    remove.textContent = "Remove";
+    remove.className = "danger";
+    remove.addEventListener("click", onRemove);
+    controls.append(remove);
+  }
+  item.append(text, controls);
   return item;
 }
 
@@ -70,10 +80,26 @@ function chooseSaved(name) {
   el("connect-dialog").showModal();
 }
 
+function removeHub(hub) {
+  if (busy) return;
+  const warning = hub.active
+    ? "\nThis hub is connected. It will disconnect and its Dashboard, tuning, and ADB sessions will close."
+    : "";
+  if (!window.confirm(`Remove "${hub.name}" and its saved Wi-Fi password?${warning}\nYou can add it again later.`)) return;
+  action(async () => {
+    await api("/api/remove", { name: hub.name });
+    await refresh();
+    el("nearby-hubs").replaceChildren();
+    el("nearby-hubs").textContent = "Saved hubs changed. Scan networks to refresh nearby hubs.";
+    message(`Removed ${hub.name} and its saved Wi-Fi password.`);
+  }, `Removing ${hub.name}...`);
+}
+
 async function refresh() {
   const status = await api("/api/status");
   savedHubs = status.hubs;
   const current = savedHubs.find((hub) => hub.active);
+  el("disconnect").hidden = !current;
   el("current-hub").textContent = current ? current.name : "No saved hub connected";
   el("connection-state").textContent =
     `${status.wifi_interface}: ${status.wifi_state} | Proxy: ${status.proxy_state}`;
@@ -83,12 +109,15 @@ async function refresh() {
     el("saved-hubs").append(row(
       hub.name, `${hub.ssid}${hub.active ? " | Connected" : ""}`,
       hub.active ? "Reconnect" : "Connect", () => chooseSaved(hub.name), hub.active,
+      () => removeHub(hub),
     ));
   }
   const host = window.location.hostname;
   el("dashboard-link").href = `http://${host}:8080/dash`;
+  el("pedro-link").href = `http://${host}:10158/`;
   el("management-link").href = `http://${host}:8080/`;
   el("dashboard-link").hidden = !status.ports.includes(8080);
+  el("pedro-link").hidden = !status.ports.includes(10158) || !status.ports.includes(12649);
   el("management-link").hidden = !status.ports.includes(8080);
   el("adb").textContent = status.ports.includes(5555) ? `adb connect ${host}:5555` : "";
 }

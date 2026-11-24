@@ -85,6 +85,7 @@ class Controller:
             "/api/hubs": ({"name", "ssid"}, {"name", "ssid"}),
             "/api/connect": ({"name"}, {"name", "password"}),
             "/api/disconnect": (set(), set()),
+            "/api/remove": ({"name"}, {"name"}),
         }
         required, optional = allowed[action]
         if (
@@ -104,6 +105,8 @@ class Controller:
                     self.config, data["name"], interactive=False,
                     password=data.get("password") or None,
                 )
+            elif action == "/api/remove":
+                bridge.remove_hub(self.config, data["name"])
             else:
                 bridge.disconnect_hub(self.config)
         return {"ok": True}
@@ -201,7 +204,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.same_origin():
             return
         path = urlsplit(self.path).path
-        if path not in ("/api/hubs", "/api/connect", "/api/disconnect"):
+        if path not in ("/api/hubs", "/api/connect", "/api/disconnect", "/api/remove"):
             self.reply(404, {"error": "Not found"})
             return
         try:

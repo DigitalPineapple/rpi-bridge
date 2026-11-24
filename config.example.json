@@ -2,6 +2,6 @@
   "lan_interface": "eth0",
   "wifi_interface": "wlan0",
   "hub_address": "192.168.43.1",
-  "ports": [8080, 8000, 5555],
+  "ports": [8080, 8000, 5555, 10158, 12649],
   "web_port": 8090
 }

@@ -140,6 +140,25 @@ class HubTests(unittest.TestCase):
             bridge.command(["nmcli"])
 
 
+class StatusTests(unittest.TestCase):
+    def test_tuning_link_requires_both_ports_and_uses_lan_address(self):
+        for ports, visible in [
+            ((10158,), False), ((12649,), False), ((10158, 12649), True),
+        ]:
+            with self.subTest(ports=ports):
+                output = io.StringIO()
+                config = bridge.Config("eth0", "wlan0", "192.168.43.1", ports)
+                writer = Mock()
+                writer.wait_closed = AsyncMock()
+                addresses = json.dumps([{"addr_info": [{"local": "192.168.1.50", "scope": "global"}]}])
+                with patch.object(bridge, "command", return_value=addresses), \
+                        patch.object(bridge, "open_hub", AsyncMock(return_value=(None, writer))) as connect, \
+                        redirect_stdout(output):
+                    bridge.status(config)
+                self.assertEqual("Pedro Pathing tuning: http://192.168.1.50:10158/" in output.getvalue(), visible)
+                self.assertEqual([call.args[1] for call in connect.await_args_list], list(ports))
+
+
 class ProxyTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.stack = ExitStack()

@@ -20,10 +20,14 @@ or change the Control Hub. It forwards the same port numbers on the Pi:
 | 8080 | FTC Dashboard web page | `http://PI_IP:8080/dash` |
 | 8000 | Dashboard live WebSocket connection | Used automatically by Dashboard |
 | 5555 | Android Debug Bridge | `adb connect PI_IP:5555` |
+| 10158 | Pedro Pathing AutoTune web page | `http://PI_IP:10158/` |
+| 12649 | Pedro Pathing AutoTune WebSocket connection | Used automatically by AutoTune |
 
-Dashboard must already be included in your robot application. ADB must already
-be enabled and listening on the hub; the proxy does not enable it or bypass
-authorization. Only these TCP services are exposed, not all hub networking.
+Dashboard and/or Pedro Pathing AutoTune must already be included and running in
+your robot application to use their respective web pages. ADB must already be
+enabled and listening on the hub; the proxy does not enable it or bypass
+authorization. Only the configured TCP services are exposed, not all hub
+networking.
 
 ## Requirements
 
@@ -69,6 +73,9 @@ sudo install -m 644 config.example.json /etc/rpi-bridge/config.json
 sudo nano /etc/rpi-bridge/config.json
 ```
 
+These copy commands are for a new installation only. If the configuration
+already exists, edit it in place instead of replacing it with the example.
+
 Otherwise the installer creates the default configuration for you:
 
 ```sh
@@ -97,9 +104,15 @@ sudo rpi-bridge status
 
 Saved hubs have **Connect** buttons. Leave the password field blank to reuse a
 saved password, or enter it to supply/update the password. The page shows the
-active saved hub and proxy state, with links to Dashboard and hub management.
-Only one hub connects at a time; refresh Dashboard and reconnect ADB after a
-switch.
+active saved hub and proxy state, with links to Dashboard, Pedro Pathing tuning,
+and hub management. **Disconnect** is hidden until a saved hub is connected.
+Disconnecting leaves its profile/password saved but disables automatic
+reconnection for all saved bridge hubs.
+
+The page refreshes connection status approximately every 15 seconds when idle;
+use **Refresh status** for an immediate update. Nearby Wi-Fi results update only
+when you click **Scan networks**. Only one hub connects at a time; refresh
+Dashboard and Pedro tuning, and reconnect ADB after a switch.
 
 Wi-Fi password inputs are cleared when submitted. Do not use the web UI on
 untrusted/shared Wi-Fi. For an encrypted UI connection, tunnel it over SSH:
@@ -110,7 +123,9 @@ ssh -N -L 8090:PI_ETHERNET_IP:8090 PI_USER@PI_HOST
 ```
 
 With this UI-only tunnel, use the Pi's LAN address (not the UI's localhost
-Dashboard links) for Dashboard and ADB, or forward their ports separately.
+service links) for Dashboard, Pedro tuning, and ADB, or forward their ports
+separately. The tunnel encrypts your UI connection only; it does not disable or
+restrict the unauthenticated portal that remains accessible on the LAN.
 
 Use the actual SSID broadcast by your hub, not necessarily the example above.
 `connect` prompts through `nmcli` for a missing password. NetworkManager manages
@@ -133,10 +148,16 @@ sudo ./install.sh
 ```
 
 Re-running the installer updates the installed files and restarts both services,
-dropping current Dashboard and ADB sessions. Existing configuration and saved
-hubs/passwords are preserved; obsolete admin-token files are removed. Older
+dropping current Dashboard, Pedro tuning, and ADB sessions. Existing
+configuration and saved hubs/passwords are preserved; obsolete admin-token
+files are removed. Older
 configurations without `web_port` use port 8090 automatically. Updating the
 clone alone does not update the installed copy in `/opt/rpi-bridge`.
+Refresh the browser page after updating to load the latest portal controls.
+
+If upgrading an installation that predates Pedro Pathing support, add **10158
+and 12649** to the `ports` list in `/etc/rpi-bridge/config.json` before restarting
+the services. The installer intentionally does not replace existing settings.
 
 ## Use from your laptop
 
@@ -146,7 +167,14 @@ Reserve this address in your router's DHCP settings so it stays stable.
 ```text
 http://192.168.1.50:8080/
 http://192.168.1.50:8080/dash
+http://192.168.1.50:10158/
 ```
+
+The last URL opens **Pedro Pathing AutoTune**. Its page uses the browser's host
+address for the live WebSocket connection on port **12649**, so both tuning
+ports must be forwarded unchanged. The bridge UI shows its tuning link only
+when both ports are configured. This is AutoTune, not the separate Pedro Panels
+application, which may use different ports.
 
 For Android Studio, run from the laptop with Android platform-tools installed:
 
@@ -157,6 +185,11 @@ adb devices
 
 Accept any required ADB authorization on the robot side using the normal FTC/REV
 workflow. The hub should then appear as an ADB deployment target.
+
+The portal displays an ADB connection command, not a laptop connection indicator.
+`rpi-bridge status` checks TCP port reachability, not ADB authorization or whether
+a laptop is connected. Use `adb devices -l` on the laptop: `device` means ready;
+`offline` or `unauthorized` means it is not ready.
 
 ## Save and switch hubs
 
@@ -170,7 +203,7 @@ sudo rpi-bridge disconnect
 
 Only one hub is connected at a time. Switching first stops the proxy to close
 existing sessions, then changes Wi-Fi and restarts the previously running
-service. Refresh Dashboard and reconnect ADB after switching:
+service. Refresh Dashboard and Pedro tuning, and reconnect ADB after switching:
 
 ```sh
 adb disconnect 192.168.1.50:5555
@@ -189,11 +222,21 @@ Leave `wlan0` dedicated to hub connectivity and disable autoconnect on any
 unrelated saved Wi-Fi profiles that could take it over. This tool only changes
 its own `rpi-bridge-*` profiles.
 `disconnect` disables their autoconnect, but leaves profiles/passwords saved.
-To remove a disconnected saved hub:
+In the web UI, use **Remove** next to a saved hub and confirm to forget its
+profile and stored Wi-Fi password. Removing the connected hub also disconnects
+it and closes its Dashboard, tuning, and ADB sessions. Other saved hubs are left
+unchanged. This does not reset or change the Control Hub's own password.
+Removing a disconnected hub does not interrupt the current hub's proxy sessions.
+After removal, scan again to refresh nearby-network actions if needed.
+
+To remove a disconnected saved hub from the command line:
 
 ```sh
 sudo nmcli connection delete id rpi-bridge-competition
 ```
+
+There is no `rpi-bridge remove` CLI command; use the portal for removal of a
+connected hub so proxy sessions are closed before its profile is deleted.
 
 ## Configuration and operation
 
@@ -204,12 +247,14 @@ Edit `/etc/rpi-bridge/config.json`:
   "lan_interface": "eth0",
   "wifi_interface": "wlan0",
   "hub_address": "192.168.43.1",
-  "ports": [8080, 8000, 5555],
+  "ports": [8080, 8000, 5555, 10158, 12649],
   "web_port": 8090
 }
 ```
 
 Remove `5555` if you do not need ADB. Keep **both 8080 and 8000** for Dashboard.
+Keep **both 10158 and 12649** for Pedro Pathing AutoTune; remove them if your
+robot application does not provide that service.
 The stock Dashboard client expects WebSockets on port 8000; changing the browser
 URL alone does not change that port. Configuration supports forwarding the
 listed ports unchanged, not remapping them.
@@ -224,7 +269,8 @@ sudo journalctl -u rpi-bridge -n 50 --no-pager
 ```
 
 `status` checks upstream port reachability and exits nonzero if any configured
-hub port is unavailable. This can be expected for 5555 when ADB is disabled.
+hub port is unavailable. This can be expected for 5555 when ADB is disabled or
+10158/12649 when AutoTune is not running.
 It does not prove that your laptop can reach the Pi; use the browser and
 `adb connect` from the laptop for that.
 
@@ -235,6 +281,8 @@ do not require restarting the proxy. NetworkManager hub profiles exclude Wi-Fi
 default routes and DNS, preserving the existing Ethernet internet connection.
 The service runs as a temporary unprivileged systemd user with `CAP_NET_RAW`
 solely to allow interface binding; CLI network changes require `sudo`.
+Normal password-prompting sudo is sufficient; passwordless sudo is not required
+for installation, CLI use, or operation of either background service.
 
 The separate `rpi-bridge-web` service stays available while the TCP proxy stops
 and restarts during hub switching. It binds only to Ethernet, like the proxy.
@@ -260,6 +308,9 @@ hub with the CLI so its NetworkManager profile is updated too.
   your Pi firewall. If enabled, permit only needed TCP ports from the home LAN on
   `eth0`, including 8090 for the web controls; do not disable the firewall or
   forward ports on the router.
+- **Pedro tuning loads but cannot connect:** check port 12649, and ensure
+  AutoTune's live server is running on the hub. Forwarding 10158 alone only
+  serves the page. The bridge does not start tuning or modify the robot code.
 - **Hub unreachable:** check SSID/password, hub power, Wi-Fi band compatibility,
   `nmcli device status`, and the service logs. For a blocked adapter, use
   `sudo rfkill unblock wifi`. Configure the Pi's WLAN country through
@@ -271,6 +322,9 @@ hub with the CLI so its NetworkManager profile is updated too.
 - **Permission denied / unknown interface on startup:** use the installed
   systemd service on Linux and verify interface names. Running `run` as an
   ordinary user lacks the interface-binding capability.
+- **Portal reports another operation is running:** wait for the current scan
+  or connection change to finish, then refresh. Operations from different team
+  devices share the same controller and cannot run simultaneously.
 
 To stop the proxy without changing the hub Wi-Fi connection:
 
@@ -299,5 +353,6 @@ behavior, also verify radio association, reboot reconnection, and physical
 Control Hub services on a Pi; those are not simulated by the tests.
 
 The web tests cover login-free HTTP requests, origin protection, password
-redaction/stdin transport, Wi-Fi scan parsing, operation conflicts, and error
+redaction/stdin transport, Wi-Fi scan parsing, operation conflicts, saved-hub
+removal (including active-hub proxy shutdown and deletion failures), and error
 responses. No web framework, external assets, or Python packages are needed.

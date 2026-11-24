@@ -1,4 +1,4 @@
-from contextlib import nullcontext, redirect_stdout
+from contextlib import contextmanager, nullcontext, redirect_stdout
 import http.client
 import io
 import json
@@ -19,6 +19,64 @@ CONFIG = bridge.Config("eth0", "wlan0", "192.168.43.1", (8080, 8000, 5555))
 
 
 class ControllerTests(unittest.TestCase):
+    def test_remove_uses_shared_lock_and_rejects_invalid_fields(self):
+        with patch.object(bridge, "network_operation", return_value=nullcontext()) as lock, \
+                patch.object(bridge, "remove_hub") as remove:
+            result = web.Controller(CONFIG).perform("/api/remove", {"name": "practice"})
+            self.assertEqual(result, {"ok": True})
+            lock.assert_called_once()
+            remove.assert_called_once_with(CONFIG, "practice")
+            for data in ({}, {"name": 1}, {"name": "practice", "uuid": "other"}):
+                with self.assertRaises(ValueError):
+                    web.Controller(CONFIG).perform("/api/remove", data)
+            self.assertEqual(remove.call_count, 1)
+
+    def test_remove_only_deletes_selected_saved_profile_and_pauses_if_active(self):
+        for active in ("target-uuid", "other-uuid"):
+            for fails in (False, True):
+                with self.subTest(active=active, fails=fails):
+                    events = []
+
+                    def command(args, **kwargs):
+                        if "delete" in args:
+                            events.append(("delete", args))
+                            if fails:
+                                raise bridge.BridgeError("deletion failed")
+                            return ""
+                        return active + "\n"
+
+                    @contextmanager
+                    def pause():
+                        events.append("stop")
+                        try:
+                            yield
+                        finally:
+                            events.append("start")
+
+                    with patch.object(bridge, "saved_hubs", return_value={
+                        "practice": "target-uuid", "other": "other-uuid",
+                    }), patch.object(bridge, "command", side_effect=command), \
+                            patch.object(bridge, "pause_proxy", side_effect=pause):
+                        if fails:
+                            with self.assertRaisesRegex(bridge.BridgeError, "deletion failed"):
+                                bridge.remove_hub(CONFIG, "practice")
+                        else:
+                            bridge.remove_hub(CONFIG, "practice")
+                    deletion = ("delete", [
+                        "nmcli", "--wait", "15", "connection", "delete", "uuid", "target-uuid",
+                    ])
+                    self.assertEqual(
+                        events, ["stop", deletion, "start"] if active == "target-uuid" else [deletion],
+                    )
+
+    def test_remove_unknown_or_invalid_hub_cannot_delete_arbitrary_connections(self):
+        with patch.object(bridge, "saved_hubs", return_value={"other": "uuid"}), \
+                patch.object(bridge, "command") as command:
+            for name in ("missing", "../other", "netplan-wlan0-NETGEAR47"):
+                with self.assertRaises(bridge.BridgeError):
+                    bridge.remove_hub(CONFIG, name)
+            command.assert_not_called()
+
     def test_scan_handles_escaped_ssids_and_deduplicates_by_strongest_signal(self):
         output = "FTC\\:one:40:WPA2\nFTC\\:one:85:WPA2\nFTC\\\\two:60:WPA2\n:10:--\n"
         with patch.object(bridge, "command", return_value=output):
@@ -132,16 +190,19 @@ class HTTPTests(unittest.TestCase):
             ("/api/status", "GET"), ("/api/scan", "GET"),
             ("/api/connect", "POST"), ("/api/hubs", "POST"),
             ("/api/disconnect", "POST"),
+            ("/api/remove", "POST"),
         ]:
             with self.subTest(path=path):
                 status, _, _ = self.request(path, method=method, body="{}")
                 self.assertEqual(status, 200)
         self.controller.status.assert_called_once()
         self.controller.scan.assert_called_once()
-        self.assertEqual(self.controller.perform.call_count, 3)
+        self.assertEqual(self.controller.perform.call_count, 4)
 
     def test_cross_origin_reads_and_mutations_are_rejected(self):
-        for path, method in [("/api/status", "GET"), ("/api/connect", "POST")]:
+        for path, method in [
+            ("/api/status", "GET"), ("/api/connect", "POST"), ("/api/remove", "POST"),
+        ]:
             status, _, _ = self.request(
                 path, method=method, body="{}", headers={"Origin": "http://evil.example"},
             )

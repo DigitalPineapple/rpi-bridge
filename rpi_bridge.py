@@ -3,7 +3,7 @@
 
 import argparse
 import asyncio
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 import fcntl
 import ipaddress
@@ -233,6 +233,15 @@ def disconnect_hub(config):
     print("Disconnected hub Wi-Fi and disabled saved-hub autoconnect.")
 
 
+def remove_hub(config, alias):
+    uuid = require_hub(alias)
+    active = command([
+        "nmcli", "-g", "GENERAL.CON-UUID", "device", "show", config.wifi_interface,
+    ], timeout=10).strip()
+    with pause_proxy() if active == uuid else nullcontext():
+        command(["nmcli", "--wait", "15", "connection", "delete", "uuid", uuid], timeout=20)
+
+
 def device_socket(interface):
     if not hasattr(socket, "SO_BINDTODEVICE"):
         raise BridgeError("The proxy requires Linux SO_BINDTODEVICE (run it on the Pi)")
@@ -391,6 +400,8 @@ def status(config):
         print(f"Pi hub controls: http://{address}:{config.web_port}/")
         if 8080 in config.ports:
             print(f"Dashboard / management: http://{address}:8080/ (Dashboard: /dash)")
+        if 10158 in config.ports and 12649 in config.ports:
+            print(f"Pedro Pathing tuning: http://{address}:10158/")
         if 5555 in config.ports:
             print(f"ADB: adb connect {address}:5555")
     print("Checking hub TCP services through Wi-Fi:")
