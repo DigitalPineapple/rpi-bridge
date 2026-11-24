@@ -187,3 +187,17 @@ mentor or network administrator rather than disabling network protections.
 
 For port numbers, custom network settings, service logs, command-line tools,
 and deeper troubleshooting, see the **[technical guide](docs/technical-guide.md)**.
+
+## Project website
+
+The public showcase is a static site in [`docs/index.html`](docs/index.html).
+It explains the tool; it does not connect to robots or replace the Pi's local
+hub manager.
+
+To publish it, a repository administrator must select **Settings > Pages >
+Build and deployment > Source > GitHub Actions**. After these files are pushed
+to `main`, the **Deploy project website** workflow publishes the site. You can
+also run that workflow manually from the **Actions** tab.
+
+The default site address after deployment is
+`https://digitalpineapple.github.io/rpi-bridge/`.
